@@ -1,0 +1,65 @@
+#include <ppm.h>
+#include <Servo.h>
+
+const int PPM_PIN = 2;
+Servo leftMotor;
+Servo rightMotor;
+
+bool motorsAttached = false;
+String lastDriveAction = "STOP";
+String lastSteerAction = "STRAIGHT";
+
+void setup() {
+  ppm.begin(PPM_PIN, false);
+  Serial.begin(9600);
+}
+
+void loop() {
+  // SWITCHED: Ch3 is now Drive (Left Stick), Ch1 is now Steer (Right Stick)
+  int rawDrive = ppm.read_channel(3); 
+  int rawSteer = ppm.read_channel(1); 
+
+  // --- HUGE DEADZONE (1350 - 1650) ---
+  if (rawDrive >= 1350 && rawDrive <= 1650) rawDrive = 1500;
+  if (rawSteer >= 1350 && rawSteer <= 1650) rawSteer = 1500;
+
+  // --- DETACH LOGIC ---
+  if (rawDrive == 1500 && rawSteer == 1500) {
+    if (motorsAttached) {
+      leftMotor.detach();
+      rightMotor.detach();
+      motorsAttached = false;
+      Serial.println("Motors: DETACHED (Locked Stop)");
+    }
+  } else {
+    if (!motorsAttached) {
+      leftMotor.attach(8);  // Using Pin 8 as per your snippet
+      rightMotor.attach(10);
+      motorsAttached = true;
+      Serial.println("Motors: ATTACHED");
+    }
+  }
+
+  // --- CLEAN PRINTING LOGIC ---
+  String currentDriveAction = (rawDrive > 1650) ? "FORWARD" : (rawDrive < 1350 ? "REVERSE" : "STOP");
+  String currentSteerAction = (rawSteer > 1650) ? "RIGHT" : (rawSteer < 1350 ? "LEFT" : "STRAIGHT");
+
+  if (currentDriveAction != lastDriveAction) { Serial.println("Drive: " + currentDriveAction); lastDriveAction = currentDriveAction; }
+  if (currentSteerAction != lastSteerAction) { Serial.println("Steer: " + currentSteerAction); lastSteerAction = currentSteerAction; }
+
+  // --- MOTOR CONTROL ---
+  if (motorsAttached) {
+    // Map drive: 1000=Rev, 1500=Stop, 2000=Fwd
+    int drive = map(rawDrive, 1000, 2000, 0, 180); 
+    int steer = map(rawSteer, 1000, 2000, -50, 50);
+
+    // Tank Mix (Assuming right motor is flipped physically)
+    int leftSpeed = drive + steer;
+    int rightSpeed = (180 - drive) + steer; 
+
+    leftMotor.write(constrain(leftSpeed, 0, 180));
+    rightMotor.write(constrain(rightSpeed, 0, 180));
+  }
+
+  delay(20); 
+}
